@@ -1,0 +1,17 @@
+[package]
+name = "sraft-bench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.97"
+autometrics = { version = "2.0.0", features = ["prometheus-exporter"] }
+axum = "0.8.1"
+clap = { version = "4.5.31", features = ["derive"] }
+prost = "0.13.5"
+rand = "0.9.0"
+tokio = { version = "1.44.0", features = ["rt-multi-thread"] }
+tonic = "0.12.3"
+
+[build-dependencies]
+tonic-build = { version = "0.12.3", features = ["prost"] }
