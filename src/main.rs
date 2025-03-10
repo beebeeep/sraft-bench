@@ -99,7 +99,7 @@ async fn main() -> Result<()> {
         "/metrics",
         routing::get(|| async { prometheus_exporter::encode_http_response() }),
     );
-    let listener = TcpListener::bind("[::1]:8080").await?;
+    let listener = TcpListener::bind("0.0.0.0:8080").await?;
     axum::serve(listener, app).await?;
     Ok(())
 }
