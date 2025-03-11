@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::{anyhow, Result};
 use autometrics::{autometrics, prometheus_exporter};
 use axum::routing;
@@ -60,6 +62,25 @@ async fn set(client: &mut SraftClient<Channel>, payload_size: usize) -> Result<O
     }
 }
 
+fn spawn_writer(mut client: SraftClient<Channel>, payload_size: usize) {
+    tokio::spawn(async move {
+        loop {
+            if let Err(err) = set(&mut client, payload_size).await {
+                println!("got set error: {err:#}");
+            }
+        }
+    });
+}
+
+fn spawn_reader(mut client: SraftClient<Channel>) {
+    tokio::spawn(async move {
+        loop {
+            if let Err(err) = get(&mut client).await {
+                println!("got get error: {err:#}");
+            }
+        }
+    });
+}
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -71,28 +92,28 @@ async fn main() -> Result<()> {
         let ch = Channel::from_shared(follower)?.connect().await?;
         read_clients.push(SraftClient::new(ch));
     }
-    let mut handles = Vec::with_capacity(args.writers + args.readers);
-    for _ in 0..args.writers {
-        let mut client = write_client.clone();
-        handles.push(tokio::spawn(async move {
-            loop {
-                if let Err(err) = set(&mut client, args.payload_size).await {
-                    println!("got set error: {err:#}");
-                }
-            }
-        }));
-    }
 
-    for i in 0..args.readers {
-        let mut client = read_clients[i % read_clients.len()].clone();
-        handles.push(tokio::spawn(async move {
-            loop {
-                if let Err(err) = get(&mut client).await {
-                    println!("got get error: {err:#}");
-                }
-            }
-        }));
-    }
+    tokio::spawn(async move {
+        for _ in 0..args.writers {
+            spawn_writer(write_client.clone(), args.payload_size);
+        }
+        loop {
+            tokio::time::sleep(Duration::from_secs(120)).await;
+            spawn_writer(write_client.clone(), args.payload_size);
+        }
+    });
+
+    tokio::spawn(async move {
+        for i in 0..args.readers {
+            spawn_reader(read_clients[i % read_clients.len()].clone());
+        }
+        let mut idx = 0;
+        loop {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            spawn_reader(read_clients[idx % read_clients.len()].clone());
+            idx += 1;
+        }
+    });
 
     prometheus_exporter::init();
     let app = Router::new().route(
